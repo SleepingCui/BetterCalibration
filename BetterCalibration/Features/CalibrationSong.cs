@@ -1,12 +1,8 @@
-﻿using JALib.Core;
-using JALib.Core.Patch;
-using JALib.Core.Setting;
-using JALib.Tools;
-using Newtonsoft.Json.Linq;
+using BetterCalibration.Core;
 
 namespace BetterCalibration.Features;
 
-public class CalibrationSong() : Feature(Main.Instance, nameof(CalibrationSong), false, typeof(CalibrationSong), typeof(CalibrationSongSettings)) {
+public class CalibrationSong : Feature {
     private static CalibrationSongSettings _settings;
     private static float _bpm;
     private static float _lastTime;
@@ -15,12 +11,14 @@ public class CalibrationSong() : Feature(Main.Instance, nameof(CalibrationSong),
     private string _minimum;
     private string _repeat;
 
+    public CalibrationSong() : base(nameof(CalibrationSong), Lang.FeatureCalibrationSong, false, typeof(CalibrationSong), typeof(CalibrationSongSettings)) {
+        _settings = (CalibrationSongSettings) SettingObject;
+    }
+
     protected override void OnGUI() {
-        JALocalization localization = Main.Instance.Localization;
-        SettingGUI settingGUI = Main.SettingGUI;
-        settingGUI.AddSettingFloat(ref _settings.Pitch, 100, ref _pitch, localization["Song.Pitch"], 0);
-        settingGUI.AddSettingToggleInt(ref _settings.Minimum, 0, ref _settings.UseMinimum, ref _minimum, localization["Song.Minimum"]);
-        settingGUI.AddSettingInt(ref _settings.RepeatSong, 0, ref _repeat, localization["Song.Repeat"], 0);
+        SettingGUI.AddSettingFloat(ref _settings.Pitch, 100, ref _pitch, Lang.SongPitch, 0);
+        SettingGUI.AddSettingToggleInt(ref _settings.Minimum, 0, ref _settings.UseMinimum, ref _minimum, Lang.SongMinimum);
+        SettingGUI.AddSettingInt(ref _settings.RepeatSong, 0, ref _repeat, Lang.SongRepeat, 0);
     }
 
     [JAPatch("scrCalibrationPlanet", "Start", PatchType.Postfix, false, MaxVersion = 140)]
@@ -51,13 +49,13 @@ public class CalibrationSong() : Feature(Main.Instance, nameof(CalibrationSong),
     public static void BpmPostfix(scrConductor ___conductor) {
         ___conductor.bpm = 130;
     }
-    
+
     [JAPatch("scrCalibrationPlanet", "PostSong", PatchType.Prefix, false, MaxVersion = 140)]
     [JAPatch(nameof(scnCalibration), "Calibrated", PatchType.Prefix, false, MinVersion = 141)]
     public static void ResetPitch(scrConductor ___conductor) {
         ___conductor.song.pitch = 1;
     }
-    
+
     [JAPatch("scrCalibrationPlanet", "GetOffset", PatchType.Postfix, false, MaxVersion = 140)]
     [JAPatch(nameof(scnCalibration), "GetOffset", PatchType.Postfix, false, MinVersion = 141)]
     public static void SetOffset(ref double __result) {
@@ -66,7 +64,7 @@ public class CalibrationSong() : Feature(Main.Instance, nameof(CalibrationSong),
         while(result < _settings.Minimum) result += time360;
         __result = result / 1000;
     }
-    
+
     [JAPatch("scrCalibrationPlanet", "Update", PatchType.Postfix, false, MaxVersion = 140)]
     [JAPatch(nameof(scnCalibration), "Update", PatchType.Postfix, false, MinVersion = 141)]
     public static void CheckRepeat(scrConductor ___conductor) {
@@ -74,14 +72,10 @@ public class CalibrationSong() : Feature(Main.Instance, nameof(CalibrationSong),
         _lastTime = ___conductor.song.time;
     }
 
-    private class CalibrationSongSettings : JASetting {
+    private class CalibrationSongSettings {
         public float Pitch = 100;
         public int Minimum;
         public bool UseMinimum;
         public int RepeatSong;
-
-        public CalibrationSongSettings(JAMod mod, JObject jsonObject = null) : base(mod, jsonObject) {
-            _settings = this;
-        }
     }
 }

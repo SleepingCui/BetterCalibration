@@ -1,47 +1,64 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using BetterCalibration.Core;
 using BetterCalibration.Features;
-using JALib.Core;
-using JALib.Core.Patch;
-using JALib.Tools;
+using HarmonyLib;
 using SA.GoogleDoc;
 using UnityEngine;
+using UnityModManagerNet;
+// SA.GoogleDoc 里也有一个 Settings 类型，这里明确指向本模组的设置类
+using Settings = BetterCalibration.Core.Settings;
 
 namespace BetterCalibration;
 
-public class Main : JAMod {
-    public static Main Instance;
-    public static SettingGUI SettingGUI;
+public static class Main {
+    public static UnityModManager.ModEntry ModEntry { get; private set; }
+    public static readonly List<Feature> Features = [];
     public static string OffsetString;
 
-    protected override void OnSetup() {
-        SettingGUI = new SettingGUI(this);
-        AddFeature(new CalibrationPopup(), new CalibrationDetail(), new CalibrationSong(), new TimingLogger(), new FloatOffset());
-        Patcher.AddPatch(ShowSettingsMenu);
+    private static Patcher patcher;
+    private static MethodInfo legacyRdStringGet;
+
+    public static bool Load(UnityModManager.ModEntry modEntry) {
+        ModEntry = modEntry;
+        Settings.Load();
+        Features.AddRange(new Feature[] {
+            new CalibrationPopup(),
+            new CalibrationDetail(),
+            new CalibrationSong(),
+            new TimingLogger(),
+            new FloatOffset()
+        });
+        patcher = new Patcher(nameof(Main)).AddPatch(typeof(Main));
+        modEntry.OnToggle = OnToggle;
+        modEntry.OnGUI = OnGUI0;
+        modEntry.OnHideGUI = _ => OffsetString = null;
+        modEntry.OnSaveGUI = _ => Settings.Save();
+        return true;
     }
 
-    protected override void OnEnable() {
+    private static bool OnToggle(UnityModManager.ModEntry modEntry, bool value) {
+        if(value) {
+            patcher.Patch();
+            foreach(Feature feature in Features)
+                if(feature.Enabled) feature.Enable();
+        } else {
+            foreach(Feature feature in Features) feature.Disable();
+            patcher.Unpatch();
+        }
+        return true;
     }
 
-    protected override void OnDisable() {
+    private static void OnGUI0(UnityModManager.ModEntry modEntry) {
+        foreach(Feature feature in Features) feature.OnGUI0();
+        OnGUIBehind();
     }
 
-    protected override void OnGUI() {
-        GUILayout.BeginHorizontal();
-        GUILayout.Label(Localization["Language"]);
-        GUILayout.Space(4f);
-        AddLanguageButton(Localization["Language.Default"], null);
-        AddLanguageButton("한국어", SystemLanguage.Korean);
-        AddLanguageButton("English", SystemLanguage.English);
-        AddLanguageButton("日本語", SystemLanguage.Japanese);
-        AddLanguageButton("Tiếng Việt", SystemLanguage.Vietnamese);
-        GUILayout.FlexibleSpace();
-        GUILayout.EndHorizontal();
-    }
-
-    protected override void OnGUIBehind() {
+    private static void OnGUIBehind() {
         if(FloatOffset.Instance.Enabled) return;
         GUILayout.BeginHorizontal();
-        GUILayout.Label(Localization["InputOffset"]);
+        GUILayout.Label(Lang.InputOffset);
         GUILayout.Space(4f);
         if(GUILayout.Button("-", GUILayout.Width(25))) {
             scrConductor.currentPreset.inputOffset--;
@@ -49,12 +66,12 @@ public class Main : JAMod {
             Persistence.WriteSaveToDisk();
         }
         int offset = scrConductor.currentPreset.inputOffset;
-        if(OffsetString.IsNullOrEmpty() || !int.TryParse(OffsetString, out int i) || i != offset) OffsetString = offset.ToString();
+        if(string.IsNullOrEmpty(OffsetString) || !int.TryParse(OffsetString, out int i) || i != offset) OffsetString = offset.ToString();
         OffsetString = GUILayout.TextField(OffsetString);
         int resultInt;
         try {
-            resultInt = OffsetString.IsNullOrEmpty() ? offset : int.TryParse(OffsetString, out i) ? i : offset;
-        } catch (FormatException) {
+            resultInt = string.IsNullOrEmpty(OffsetString) ? offset : int.TryParse(OffsetString, out i) ? i : offset;
+        } catch(FormatException) {
             resultInt = offset;
         }
         if(resultInt != offset) {
@@ -72,27 +89,24 @@ public class Main : JAMod {
         GUILayout.EndHorizontal();
     }
 
-    protected override void OnHideGUI() => OffsetString = null;
-
-    private void AddLanguageButton(string text, SystemLanguage? lang) {
-        if(!GUILayout.Button(GetSelectText(text, CustomLanguage == lang))) return;
-        CustomLanguage = lang;
-    }
-
-    private static string GetSelectText(string text, bool selected) {
-        return selected ? $"<b>{text}</b>" : text;
-    }
-
     [JAPatch(typeof(SettingsMenu), nameof(SettingsMenu.Show), PatchType.Prefix, true)]
-    private static void ShowSettingsMenu(PauseSettingButton ___offsetButton) {
+    public static void ShowSettingsMenu(PauseSettingButton ___offsetButton) {
         if(!___offsetButton) return;
         if(FloatOffset.Instance.Enabled) FloatOffset.Instance.SetOffsetSettingString(___offsetButton);
         else ___offsetButton.valueLabel.text = scrConductor.currentPreset.inputOffset + RdStringGet("editor.unit." + ___offsetButton.unit);
     }
 
     public static string RdStringGet(string key) {
-        return VersionControl.releaseNumber < 141 ? typeof(RDString).Invoke<string>("Get", key, null, LangSection.Translations) : RdStringGetR141(key);
+        if(VersionControl.releaseNumber >= 141) return RDString.Get(key);
+        legacyRdStringGet ??= AccessTools.Method(typeof(RDString), "Get", [typeof(string), typeof(Dictionary<string, object>), typeof(LangSection)]);
+        return (string) legacyRdStringGet.Invoke(null, [key, null, LangSection.Translations]);
     }
 
-    private static string RdStringGetR141(string key) => RDString.Get(key);
+    public static void Log(string message) => ModEntry?.Logger?.Log(message);
+
+    public static void Warning(string message) => ModEntry?.Logger?.Warning(message);
+
+    public static void Error(string message) => ModEntry?.Logger?.Error(message);
+
+    public static void Error(string message, Exception exception) => ModEntry?.Logger?.LogException(message, exception);
 }

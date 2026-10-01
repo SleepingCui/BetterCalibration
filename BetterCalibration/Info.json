@@ -1,0 +1,9 @@
+{
+  "Id": "BetterCalibration",
+  "DisplayName": "BetterCalibration",
+  "Author": "Jongyeol",
+  "Version": "1.2.2",
+  "AssemblyName": "BetterCalibration.dll",
+  "EntryMethod": "BetterCalibration.Main.Load",
+  "HomePage": "https://github.com/Jongye0l/BetterCalibration"
+}

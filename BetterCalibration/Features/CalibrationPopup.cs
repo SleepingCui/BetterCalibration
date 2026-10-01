@@ -1,8 +1,7 @@
-﻿using System;
+using System;
 using System.Linq;
+using BetterCalibration.Core;
 using BetterCalibration.Features.Multi;
-using JALib.Core;
-using JALib.Core.Patch;
 using MonsterLove.StateMachine;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -16,7 +15,7 @@ public class CalibrationPopup : Feature {
     private static Text _popupText;
     private static float _changeOffset;
 
-    public CalibrationPopup() : base(Main.Instance, nameof(CalibrationPopup), true, typeof(CalibrationPopup)) {
+    public CalibrationPopup() : base(nameof(CalibrationPopup), Lang.FeatureCalibrationPopup, true, typeof(CalibrationPopup)) {
         AddMultiFeatures(typeof(Timing));
     }
 
@@ -30,7 +29,7 @@ public class CalibrationPopup : Feature {
         _popupText = null;
         _gameObject = null;
     }
-    
+
     private static void OnSceneUnloaded(Scene _) {
         Hide();
     }
@@ -121,7 +120,7 @@ public class CalibrationPopup : Feature {
             original = i.ToString();
             changed = Mathf.RoundToInt(_changeOffset).ToString();
         }
-        _popupText.text = string.Format(Main.Instance.Localization["Popup.ChangeOffset"], original, changed);
+        _popupText.text = string.Format(Lang.PopupChangeOffset, original, changed);
     }
 
     private static void Yes() {
@@ -142,10 +141,10 @@ public class CalibrationPopup : Feature {
     }
 
     [JAPatch(typeof(scrController), nameof(scrController.TogglePauseGame), PatchType.Postfix, true)]
-    private static void Hide() {
+    public static void Hide() {
         if(!_gameObject) return;
         Object.DestroyImmediate(_gameObject);
-        if((ADOBase.isLevelEditor || ADOBase.controller is { paused: false }) && ADOBase.conductor is { isGameWorld: true }) 
+        if((ADOBase.isLevelEditor || ADOBase.controller is { paused: false }) && ADOBase.conductor is { isGameWorld: true })
             Cursor.visible = !Persistence.GetHideCursorWhilePlaying();
     }
 }

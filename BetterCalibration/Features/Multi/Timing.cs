@@ -1,12 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Reflection.Emit;
-using HarmonyLib;
-using JALib.Core;
-using JALib.Core.Patch;
-using JALib.Tools;
+using BetterCalibration.Core;
 using MonsterLove.StateMachine;
 
 namespace BetterCalibration.Features.Multi;
@@ -15,10 +10,6 @@ public class Timing : MultiFeature {
     private static float _lastTooEarly;
     private static float _lastTooLate;
     public static List<float> Timings;
-
-    public Timing() : base(Main.Instance) {
-        Patcher.AddPatch(typeof(Timing));
-    }
 
     protected override void OnEnable() {
         Timings = [];
@@ -67,23 +58,23 @@ public class Timing : MultiFeature {
                 break;
         }
     }
-    
+
     [JAPatch(typeof(scrMisc), "GetHitMargin", PatchType.Postfix, false, MaxVersion = 140)]
     // ReSharper disable once InconsistentNaming
-    private static void OnHitMarginChange(float hitangle, float refangle, bool isCW, float bpmTimesSpeed, float conductorPitch, HitMargin __result) {
+    public static void OnHitMarginChange(float hitangle, float refangle, bool isCW, float bpmTimesSpeed, float conductorPitch, HitMargin __result) {
         if(RDC.auto || scrController.instance.currFloor.nextfloor && scrController.instance.currFloor.nextfloor.auto) return;
         float angle = (hitangle - refangle) * (isCW ? 1 : -1) * 57.29578f;
         float timing = angle / 180 / bpmTimesSpeed / conductorPitch * 60000;
         SetTiming(timing, __result);
     }
-    
+
     private static scrPlanet _planet;
-    
+
     [JAPatch(typeof(scrPlanet), nameof(scrPlanet.SwitchChosen), PatchType.Prefix, true, MinVersion = 141, TryingCatch = false)]
-    private static void SwitchChosenPrefix(scrPlanet __instance) => _planet = __instance;
+    public static void SwitchChosenPrefix(scrPlanet __instance) => _planet = __instance;
 
     [JAPatch(typeof(scrPlanet), nameof(scrPlanet.SwitchChosen), PatchType.Finalizer, false, MinVersion = 141, TryingCatch = false)]
-    private static void SwitchChosenFinalizer() => _planet = null;
+    public static void SwitchChosenFinalizer() => _planet = null;
 
     [JAPatch(typeof(scrMisc), "GetHitMargin", PatchType.Postfix, false, MinVersion = 141, MaxVersion = 148)]
     public static void OnHitMarginChangeR141(float hitangle, float refangle, bool isCW, float bpmTimesSpeed, float conductorPitch, HitMargin __result) {
@@ -95,7 +86,7 @@ public class Timing : MultiFeature {
     }
 
     [JAPatch(typeof(scrMisc), nameof(scrMisc.GetHitMarginInDeg), PatchType.Postfix, false, MinVersion = 149)]
-    private static void GetHitMarginInDegProxyR149(float hitAngle, float refAngle, bool clockwise, float floorBpm, float conductorPitch, HitMargin __result) {
+    public static void GetHitMarginInDegProxyR149(float hitAngle, float refAngle, bool clockwise, float floorBpm, float conductorPitch, HitMargin __result) {
         if(!IsTimingAvailable(_planet)) return;
 
         float angle = (hitAngle - refAngle) * (clockwise ? 1 : -1) * 57.29578f;
@@ -104,7 +95,7 @@ public class Timing : MultiFeature {
     }
 
     [JAPatch(typeof(scrMisc), nameof(scrMisc.GetHitMarginInSec), PatchType.Postfix, false, MinVersion = 149)]
-    private static void GetHitMarginInSecProxyR149(double timeDiff, HitMargin __result) {
+    public static void GetHitMarginInSecProxyR149(double timeDiff, HitMargin __result) {
         if(!IsTimingAvailable(_planet)) return;
 
         float timing = (float) timeDiff * 1000;
