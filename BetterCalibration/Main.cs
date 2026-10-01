@@ -7,7 +7,7 @@ using HarmonyLib;
 using SA.GoogleDoc;
 using UnityEngine;
 using UnityModManagerNet;
-// SA.GoogleDoc 里也有一个 Settings 类型，这里明确指向本模组的设置类
+
 using Settings = BetterCalibration.Core.Settings;
 
 namespace BetterCalibration;

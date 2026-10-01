@@ -488,8 +488,7 @@
         </Reference>
     </ItemGroup>
 
-    <!-- 输出目录里只放模组自己的产物：BetterCalibration.dll（编译器生成）、Info.json（模组清单）、以及 .pdb 调试符号。
-         游戏/依赖的 dll 一律不复制进来（它们由 FrameworkPathOverride 指向的游戏 Managed 目录提供）。 -->
+
     <ItemGroup>
         <None Update="Info.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
