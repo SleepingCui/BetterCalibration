@@ -6,15 +6,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using ADOFAI;
+using BetterCalibration.Core;
 using BetterCalibration.Features.Multi;
-using HarmonyLib;
-using JALib.Core;
-using JALib.Core.Patch;
-using JALib.Core.Setting;
-using JALib.Tools;
-using JALib.Tools.ByteTool;
 using MonsterLove.StateMachine;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace BetterCalibration.Features;
@@ -28,15 +22,14 @@ public class TimingLogger : Feature {
     private string _maxTimingsPerMap;
     private static readonly Hash AllHash = new([]);
 
-    public TimingLogger() : base(Main.Instance, nameof(TimingLogger), true, typeof(TimingLogger), typeof(TimingLoggerSettings)) {
+    public TimingLogger() : base(nameof(TimingLogger), Lang.FeatureTimingLogger, true, typeof(TimingLogger), typeof(TimingLoggerSettings)) {
+        _settings = (TimingLoggerSettings) SettingObject;
         AddMultiFeatures(typeof(Timing));
     }
 
     protected override void OnGUI() {
-        JALocalization localization = Main.Instance.Localization;
-        SettingGUI settingGUI = Main.SettingGUI;
-        settingGUI.AddSettingInt(ref _settings.MaxTimings, 15, ref _maxTimings, localization["TimingLogger.MaxTimings"]);
-        settingGUI.AddSettingInt(ref _settings.MaxTimingsPerMap, 5, ref _maxTimingsPerMap, localization["TimingLogger.MaxTimingsPerMap"]);
+        SettingGUI.AddSettingInt(ref _settings.MaxTimings, 15, ref _maxTimings, Lang.TimingLoggerMaxTimings);
+        SettingGUI.AddSettingInt(ref _settings.MaxTimingsPerMap, 5, ref _maxTimingsPerMap, Lang.TimingLoggerMaxTimingsPerMap);
         bool inGame = ADOBase.controller && ADOBase.controller.gameworld;
         List<float> mapTimings = !inGame ? null : GetTiming(GetMapHash());
 #if DEBUG
@@ -44,10 +37,10 @@ public class TimingLogger : Feature {
 #endif
         GUILayout.BeginHorizontal();
             bool curMapOffset = inGame && mapTimings.Count > 0 && mapTimings[0] != 0;
-            GUILayout.Label(localization["TimingLogger.PrevOffset"] + ": " +
-                            (inGame ? !curMapOffset ? localization["TimingLogger.NoTimings"] : mapTimings[0] + "" :
-                                 localization["TimingLogger.NotOpenMap"]));
-            if(curMapOffset && GUILayout.Button(localization["TimingLogger.SetTiming"])) {
+            GUILayout.Label(Lang.TimingLoggerPrevOffset + ": " +
+                            (inGame ? !curMapOffset ? Lang.TimingLoggerNoTimings : mapTimings[0] + "" :
+                                 Lang.TimingLoggerNotOpenMap));
+            if(curMapOffset && GUILayout.Button(Lang.TimingLoggerSetTiming)) {
                 if(FloatOffset.Instance.Enabled) {
                     FloatOffset.Instance.Offset = mapTimings[0];
                     return;
@@ -64,16 +57,16 @@ public class TimingLogger : Feature {
             GUILayout.BeginVertical();
                 GUILayout.BeginHorizontal();
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label(localization["TimingLogger.AllTimings"]);
+                    GUILayout.Label(Lang.TimingLoggerAllTimings);
                     GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
                 List<float> allTimings = GetTiming(AllHash);
-                GUIContent buttonContent = new(localization["TimingLogger.SetTiming"]);
+                GUIContent buttonContent = new(Lang.TimingLoggerSetTiming);
                 Vector2 buttonSize = GUI.skin.button.CalcSize(buttonContent);
                 GUILayout.BeginVertical(new GUIStyle(GUI.skin.box));
                     if(allTimings.Count <= 1) {
                         GUILayout.BeginVertical();
-                            GUILayout.Label(localization["TimingLogger.NoTimings"]);
+                            GUILayout.Label(Lang.TimingLoggerNoTimings);
                         GUILayout.EndVertical();
                     } else {
                         GUILayout.BeginHorizontal();
@@ -103,20 +96,20 @@ public class TimingLogger : Feature {
             GUILayout.BeginVertical();
                 GUILayout.BeginHorizontal();
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label(localization["TimingLogger.MapTimings"]);
+                    GUILayout.Label(Lang.TimingLoggerMapTimings);
                     GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
                 GUILayout.BeginVertical(new GUIStyle(GUI.skin.box));
                     if(!inGame) {
                         GUILayout.BeginVertical();
                             GUILayout.FlexibleSpace();
-                            GUILayout.Label(localization["TimingLogger.NotOpenMap"]);
+                            GUILayout.Label(Lang.TimingLoggerNotOpenMap);
                             GUILayout.FlexibleSpace();
                         GUILayout.EndVertical();
                     } else if(mapTimings.Count <= 1) {
                         GUILayout.BeginVertical();
                             GUILayout.FlexibleSpace();
-                            GUILayout.Label(localization["TimingLogger.NoTimings"]);
+                            GUILayout.Label(Lang.TimingLoggerNoTimings);
                             GUILayout.FlexibleSpace();
                         GUILayout.EndVertical();
                     } else {
@@ -174,53 +167,53 @@ public class TimingLogger : Feature {
     private static byte[] GetHash() {
         using MemoryStream memoryStream = new();
         scrLevelMaker lm = ADOBase.lm;
-        if(lm.isOldLevel) memoryStream.WriteUTF(lm.leveldata);
-        else memoryStream.WriteObject(lm.floorAngles);
+        if(lm.isOldLevel) BinaryIO.WriteString(memoryStream, lm.leveldata);
+        else BinaryIO.WriteFloatList(memoryStream, lm.floorAngles);
         foreach(LevelEvent levelEvent in ADOBase.customLevel.events) {
             switch(levelEvent.eventType) {
                 case LevelEventType.SetSpeed:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(0);
                     memoryStream.WriteByte((byte) (SpeedType) levelEvent["speedType"]);
                     // ReSharper disable once PossibleInvalidCastException
-                    memoryStream.WriteFloat((float) levelEvent[(SpeedType) levelEvent["speedType"] == SpeedType.Bpm ? "beatsPerMinute" : "bpmMultiplier"]);
+                    BinaryIO.WriteFloat(memoryStream, (float) levelEvent[(SpeedType) levelEvent["speedType"] == SpeedType.Bpm ? "beatsPerMinute" : "bpmMultiplier"]);
                     break;
                 case LevelEventType.Twirl:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(1);
                     break;
                 case LevelEventType.Hold:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(2);
-                    memoryStream.WriteInt((int) levelEvent["duration"]);
+                    BinaryIO.WriteInt(memoryStream, (int) levelEvent["duration"]);
                     break;
                 case LevelEventType.MultiPlanet:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(3);
                     memoryStream.WriteByte((byte) (PlanetCount) levelEvent["planets"]);
                     break;
                 case LevelEventType.Pause:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(4);
-                    memoryStream.WriteFloat((float) levelEvent["duration"]);
+                    BinaryIO.WriteFloat(memoryStream, (float) levelEvent["duration"]);
                     break;
                 case LevelEventType.AutoPlayTiles:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(5);
-                    memoryStream.WriteBoolean((bool) levelEvent["enabled"]);
+                    BinaryIO.WriteBool(memoryStream, (bool) levelEvent["enabled"]);
                     break;
                 case LevelEventType.ScaleMargin:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(6);
-                    memoryStream.WriteFloat((float) levelEvent["scale"]);
+                    BinaryIO.WriteFloat(memoryStream, (float) levelEvent["scale"]);
                     break;
                 case LevelEventType.Multitap:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(7);
-                    memoryStream.WriteFloat((float) levelEvent["taps"]);
+                    BinaryIO.WriteFloat(memoryStream, (float) levelEvent["taps"]);
                     break;
                 case LevelEventType.KillPlayer:
-                    memoryStream.WriteInt(levelEvent.floor);
+                    BinaryIO.WriteInt(memoryStream, levelEvent.floor);
                     memoryStream.WriteByte(8);
                     break;
             }
@@ -231,22 +224,23 @@ public class TimingLogger : Feature {
     public static Dictionary<Hash, List<float>> GetTimings() {
         if(_timings == null) {
             _timings = new Dictionary<Hash, List<float>>();
-            string path = Path.Combine(Main.Instance.Path, "Timings.dat");
+            string path = Path.Combine(Main.ModEntry.Path, "Timings.dat");
             if(File.Exists(path)) {
                 try {
                     GetTimings(path);
                     goto WorkEnd;
                 } catch (Exception e) {
-                    Main.Instance.LogException("Failed to load timings", e);
+                    Main.Error("Failed to load timings", e);
                 }
             }
             path += ".bak";
             if(File.Exists(path)) {
                 try {
+                    _timings = new Dictionary<Hash, List<float>>();
                     GetTimings(path);
                     goto WorkEnd;
                 } catch (Exception e) {
-                    Main.Instance.LogException("Failed to load backup timings", e);
+                    Main.Error("Failed to load backup timings", e);
                 }
             }
             _timings = new Dictionary<Hash, List<float>>();
@@ -258,12 +252,12 @@ WorkEnd:
     }
 
     private static void GetTimings(string path) {
-        using FileStream fileStream = File.OpenRead(Path.Combine(Main.Instance.Path, "Timings.dat"));
-        _timings[AllHash] = fileStream.ReadObject<List<float>>();
-        int count = fileStream.ReadInt();
+        using FileStream fileStream = File.OpenRead(path);
+        _timings[AllHash] = BinaryIO.ReadFloatList(fileStream);
+        int count = BinaryIO.ReadInt(fileStream);
         for(int i = 0; i < count; i++) {
-            Hash key = fileStream.ReadBytes(16);
-            _timings[key] = fileStream.ReadObject<List<float>>();
+            Hash key = BinaryIO.ReadBytes(fileStream, 16);
+            _timings[key] = BinaryIO.ReadFloatList(fileStream);
         }
     }
 
@@ -292,24 +286,20 @@ WorkEnd:
     }
 
     public static void SaveTiming() {
-        string path = Path.Combine(Main.Instance.Path, "Timings.dat");
+        string path = Path.Combine(Main.ModEntry.Path, "Timings.dat");
         if(File.Exists(path)) File.Copy(path, path + ".bak", true);
         using FileStream fileStream = File.OpenWrite(path);
-        fileStream.WriteObject(GetTiming(AllHash));
-        fileStream.WriteInt(_timings.Count - 1);
+        BinaryIO.WriteFloatList(fileStream, GetTiming(AllHash));
+        BinaryIO.WriteInt(fileStream, _timings.Count - 1);
         foreach(KeyValuePair<Hash, List<float>> valuePair in _timings.Where(valuePair => valuePair.Key != AllHash)) {
-            fileStream.Write(valuePair.Key.Data);
-            fileStream.WriteObject(valuePair.Value);
+            fileStream.Write(valuePair.Key.Data, 0, valuePair.Key.Data.Length);
+            BinaryIO.WriteFloatList(fileStream, valuePair.Value);
         }
     }
 
-    private class TimingLoggerSettings : JASetting {
+    private class TimingLoggerSettings {
         public int MaxTimings = 15;
         public int MaxTimingsPerMap = 5;
-
-        public TimingLoggerSettings(JAMod mod, JObject jsonObject = null) : base(mod, jsonObject) {
-            _settings = this;
-        }
     }
 
     public readonly struct Hash(byte[] data) : IEquatable<Hash> {
@@ -329,6 +319,10 @@ WorkEnd:
         public static implicit operator Hash(byte[] hash) => new(hash);
         public static implicit operator byte[](Hash hash) => hash.Data;
 
-        public override string ToString() => Data.Join(b => b.ToString("x2"), "");
+        public override string ToString() {
+            StringBuilder builder = new(Data.Length * 2);
+            foreach(byte b in Data) builder.Append(b.ToString("x2"));
+            return builder.ToString();
+        }
     }
 }

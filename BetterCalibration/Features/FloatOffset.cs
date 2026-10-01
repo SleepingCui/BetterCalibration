@@ -1,12 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
-using JALib.Core;
-using JALib.Core.Patch;
-using JALib.Core.Setting;
-using JALib.Tools;
-using Newtonsoft.Json.Linq;
+using BetterCalibration.Core;
+using HarmonyLib;
 using UnityEngine;
 using MethodInfo = System.Reflection.MethodInfo;
 using CodeInstruction = HarmonyLib.CodeInstruction;
@@ -28,12 +25,13 @@ public class FloatOffset : Feature {
             }
             if(_settings.Offset.TryGetValue(scrConductor.currentPreset.outputName, out float f) && f == value) return;
             _settings.Offset[scrConductor.currentPreset.outputName] = value;
-            Main.Instance.SaveSetting();
+            Settings.Save();
         }
     }
 
-    public FloatOffset() : base(Main.Instance, nameof(FloatOffset), true, typeof(FloatOffset), typeof(FloatOffsetSettings)) {
+    public FloatOffset() : base(nameof(FloatOffset), Lang.FeatureFloatOffset, true, typeof(FloatOffset), typeof(FloatOffsetSettings)) {
         Instance = this;
+        _settings = (FloatOffsetSettings) SettingObject;
     }
 
     protected override void OnEnable() {
@@ -45,16 +43,16 @@ public class FloatOffset : Feature {
     protected override void OnGUI() {
         ref string offsetString = ref Main.OffsetString;
         GUILayout.BeginHorizontal();
-        GUILayout.Label(Main.Instance.Localization["InputOffset"]);
+        GUILayout.Label(Lang.InputOffset);
         GUILayout.Space(4f);
         float offset = Offset;
         if(GUILayout.Button("-", GUILayout.Width(25))) Offset = offset - 1;
-        if(offsetString.IsNullOrEmpty() || !float.TryParse(offsetString, out float f) || f != offset) offsetString = offset.ToString();
+        if(string.IsNullOrEmpty(offsetString) || !float.TryParse(offsetString, out float f) || f != offset) offsetString = offset.ToString();
         offsetString = GUILayout.TextField(offsetString);
         float resultFloat;
         try {
-            resultFloat = offsetString.IsNullOrEmpty() ? offset : float.TryParse(offsetString, out f) ? f : offset;
-        } catch (FormatException) {
+            resultFloat = string.IsNullOrEmpty(offsetString) ? offset : float.TryParse(offsetString, out f) ? f : offset;
+        } catch(FormatException) {
             resultFloat = offset;
         }
         if(resultFloat != offset) Offset = resultFloat;
@@ -64,11 +62,15 @@ public class FloatOffset : Feature {
         GUILayout.EndHorizontal();
     }
 
-    [JAPatch(typeof(scrConductor), "get_calibration_i", PatchType.Replace, true)]
-    private static float GetCalibration() => Instance.Offset / 1000f;
+
+    [JAPatch(typeof(scrConductor), "get_calibration_i", PatchType.Prefix, true)]
+    public static bool GetCalibration(ref float __result) {
+        __result = Instance.Offset / 1000f;
+        return false;
+    }
 
     [JAPatch(typeof(SettingsMenu), nameof(SettingsMenu.UpdateSetting), PatchType.Prefix, false)]
-    private static bool UpdateSetting(ref PauseSettingButton ___offsetButton, PauseSettingButton setting, SettingsMenu.Interaction action) {
+    public static bool UpdateSetting(ref PauseSettingButton ___offsetButton, PauseSettingButton setting, SettingsMenu.Interaction action) {
         if(setting.name != "inputOffset" || action is SettingsMenu.Interaction.ActivateInfo or SettingsMenu.Interaction.Activate) return true;
         ___offsetButton = setting;
         if(action == SettingsMenu.Interaction.Refresh) {
@@ -99,7 +101,7 @@ public class FloatOffset : Feature {
 
     [JAPatch("scrCalibrationPlanet", "PostSong", PatchType.Transpiler, false, MaxVersion = 140)]
     [JAPatch(nameof(scnCalibration), "Calibrated", PatchType.Transpiler, false, MinVersion = 141)]
-    private static IEnumerable<CodeInstruction> PostSong(IEnumerable<CodeInstruction> instructions) {
+    public static IEnumerable<CodeInstruction> PostSong(IEnumerable<CodeInstruction> instructions) {
         using IEnumerator<CodeInstruction> enumerator = instructions.GetEnumerator();
         while(enumerator.MoveNext()) {
             CodeInstruction current = enumerator.Current!;
@@ -124,7 +126,7 @@ public class FloatOffset : Feature {
             // stloc.2      // V_2
             if(current.opcode == OpCodes.Call && current.operand is MethodInfo { Name: "Round" }) {
                 yield return new CodeInstruction(OpCodes.Ldc_I4_2);
-                yield return new CodeInstruction(OpCodes.Call, typeof(Math).Method("Round", typeof(double), typeof(int)));
+                yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Math), "Round", [typeof(double), typeof(int)]));
                 continue;
             }
             if(current.opcode == OpCodes.Ldsflda && current.operand is FieldInfo { Name: "currentPreset" }) {
@@ -156,13 +158,13 @@ public class FloatOffset : Feature {
                 // mul
                 // conv.r4
                 // call         instance void class BetterCalibration.Features.FloatOffset::set_Offset(float32)
-                yield return new CodeInstruction(OpCodes.Ldsfld, typeof(FloatOffset).Field("Instance"));
+                yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(FloatOffset), nameof(Instance)));
                 while(next!.opcode != OpCodes.Call) {
                     yield return next;
                     enumerator.MoveNext();
                     next = enumerator.Current;
                 }
-                yield return new CodeInstruction(OpCodes.Call, typeof(FloatOffset).Setter("Offset"));
+                yield return new CodeInstruction(OpCodes.Call, AccessTools.PropertySetter(typeof(FloatOffset), nameof(Offset)));
                 enumerator.MoveNext();
                 enumerator.MoveNext();
                 continue;
@@ -173,7 +175,7 @@ public class FloatOffset : Feature {
 
     [JAPatch("scrCalibrationPlanet", "PutDataPoint", PatchType.Transpiler, false, MaxVersion = 140)]
     [JAPatch(nameof(scnCalibration), "CheckConsistency", PatchType.Transpiler, false, MinVersion = 141)]
-    private static IEnumerable<CodeInstruction> PutDataPoint(IEnumerable<CodeInstruction> instructions) {
+    public static IEnumerable<CodeInstruction> PutDataPoint(IEnumerable<CodeInstruction> instructions) {
         using IEnumerator<CodeInstruction> enumerator = instructions.GetEnumerator();
         while(enumerator.MoveNext()) {
             CodeInstruction current = enumerator.Current!;
@@ -214,18 +216,14 @@ public class FloatOffset : Feature {
             // call         string [mscorlib]System.String::Concat(string, string)
             if(current.opcode == OpCodes.Call && current.operand is MethodInfo { Name: "Round" }) {
                 yield return new CodeInstruction(OpCodes.Ldc_I4_2);
-                yield return new CodeInstruction(OpCodes.Call, typeof(Math).Method("Round", typeof(double), typeof(int)));
+                yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Math), "Round", [typeof(double), typeof(int)]));
                 continue;
             }
             yield return current;
         }
     }
 
-    private class FloatOffsetSettings : JASetting {
+    private class FloatOffsetSettings {
         public Dictionary<string, float> Offset = new();
-
-        public FloatOffsetSettings(JAMod mod, JObject jsonObject = null) : base(mod, jsonObject) {
-            _settings = this;
-        }
     }
 }
